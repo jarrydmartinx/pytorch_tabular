@@ -15,7 +15,6 @@ from ..base_model import BaseModel
 
 logger = logging.getLogger(__name__)
 
-
 class TabNetBackbone(pl.LightningModule):
     def __init__(self, config: DictConfig, **kwargs):
         super().__init__()
@@ -55,7 +54,6 @@ class TabNetBackbone(pl.LightningModule):
         # Returns output and Masked Loss. We only need the output
         x, _ = self.tabnet(x)
         return x
-
 
 class TabNetModel(BaseModel):
     def __init__(self, config: DictConfig, **kwargs):
