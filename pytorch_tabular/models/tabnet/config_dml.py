@@ -5,15 +5,15 @@
 from dataclasses import dataclass, field
 
 from pytorch_tabular.config import ModelConfig
-
+from pytorch_metric_learning.losses import BaseMetricLossFunction, NCALoss
 
 @dataclass
-class TabNetModelConfig(ModelConfig):
+class TabNetMetricLearningModelConfig(ModelConfig):
     """Model configuration
     Args:
         task (str): Specify whether the problem is regression of classification.Choices are: regression classification
         learning_rate (float): The learning rate of the model
-        loss (Union[str, NoneType]): The loss function to be applied.
+        loss (BaseMetricLossFunction): The metric loss function to be applied.
         By Default it is MSELoss for regression and CrossEntropyLoss for classification.
         Unless you are sure what you are doing, leave it at MSELoss or L1Loss for regression and CrossEntropyLoss for classification
         metrics (Union[List[str], NoneType]): the list of metrics you need to track during training.
@@ -22,7 +22,7 @@ class TabNetModelConfig(ModelConfig):
         metrics_params (Union[List, NoneType]): The parameters to be passed to the Metrics initialized
         target_range (Union[List, NoneType]): The range in which we should limit the output variable. Currently ignored for multi-target regression
         Typically used for Regression problems. If left empty, will not apply any restrictions
-
+        
         n_d (int): Dimension of the prediction  layer (usually between 4 and 64)
         n_a (int): Dimension of the attention  layer (usually between 4 and 64)
         n_steps (int): Number of sucessive steps in the newtork (usually betwenn 3 and 10)
@@ -36,8 +36,15 @@ class TabNetModelConfig(ModelConfig):
         mask_type (str): Either 'sparsemax' or 'entmax' : this is the masking function to useChoices are: sparsemax entmax
 
     Raises:
-        NotImplementedError: Raises an error if task is not in ['regression','classification']
+        NotImplementedError: Raises an error if task is not in ['metric_learning']
     """
+
+    loss: BaseMetricLossFunction = field(
+        default=NCALoss,
+        metadata={
+            "help": "The metric loss function to use"
+        },
+    )
 
     n_d: int = field(
         default=8,
@@ -86,6 +93,7 @@ class TabNetModelConfig(ModelConfig):
             "choices": ["sparsemax", "entmax"],
         },
     )
+
     _module_src: str = field(default="tabnet")
     _model_name: str = field(default="TabNetModel")
     _config_name: str = field(default="TabNetModelConfig")
