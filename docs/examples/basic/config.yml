@@ -1,0 +1,103 @@
+target:
+- target
+continuous_cols:
+- num_col_0
+- num_col_1
+- num_col_2
+- num_col_3
+- num_col_4
+- num_col_5
+- num_col_6
+- num_col_7
+- num_col_8
+- num_col_9
+- num_col_10
+- num_col_11
+- num_col_12
+- num_col_13
+- num_col_14
+- num_col_17
+- num_col_19
+categorical_cols:
+- cat_col_15
+- cat_col_16
+- cat_col_18
+date_columns: []
+encode_date_columns: true
+validation_split: 0.2
+continuous_feature_transform: null
+normalize_continuous_features: true
+quantile_noise: 0
+num_workers: 0
+pin_memory: false
+categorical_dim: 3
+continuous_dim: 17
+task: classification
+ssl_task: null
+aug_task: null
+embedding_dims:
+- - 5
+  - 3
+- - 5
+  - 3
+- - 5
+  - 3
+learning_rate: 1.3182567385564074e-07
+loss: CrossEntropyLoss
+metrics:
+- accuracy
+metrics_params:
+- {}
+target_range: null
+seed: 42
+layers: 1024-512-512
+batch_norm_continuous_input: true
+activation: LeakyReLU
+embedding_dropout: 0.5
+dropout: 0.5
+use_batch_norm: false
+initialization: kaiming
+_module_src: category_embedding
+_model_name: CategoryEmbeddingModel
+_config_name: CategoryEmbeddingModelConfig
+batch_size: 1024
+fast_dev_run: false
+max_epochs: 100
+min_epochs: 1
+max_time: null
+gpus: -1
+accumulate_grad_batches: 1
+auto_lr_find: true
+auto_select_gpus: true
+check_val_every_n_epoch: 1
+gradient_clip_val: 0.0
+overfit_batches: 0.0
+deterministic: false
+profiler: null
+early_stopping: valid_loss
+early_stopping_min_delta: 0.001
+early_stopping_mode: min
+early_stopping_patience: 3
+checkpoints: valid_loss
+checkpoints_path: saved_models
+checkpoints_name: null
+checkpoints_mode: min
+checkpoints_save_top_k: 1
+load_best: true
+track_grad_norm: -1
+progress_bar: rich
+precision: 32
+trainer_kwargs: {}
+optimizer: Adam
+optimizer_params:
+  weight_decay: 0
+  amsgrad: false
+lr_scheduler: null
+lr_scheduler_params: {}
+lr_scheduler_monitor_metric: valid_loss
+output_dim: 2
+categorical_cardinality:
+- 5
+- 5
+- 5
+checkpoint_callback: true
