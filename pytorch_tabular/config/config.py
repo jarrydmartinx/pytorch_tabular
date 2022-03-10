@@ -150,6 +150,11 @@ class DataConfig:
     continuous_dim: int = field(init=False)
     # output_dim: int = field(init=False)
 
+    batch_size: int = field(
+        default=16,
+        metadata={"help: this is a test"}
+    )
+
     def __post_init__(self):
         assert (
             len(self.categorical_cols)
