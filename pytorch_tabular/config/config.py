@@ -102,7 +102,6 @@ class DataConfig:
             "help": "(Column names, Freq) tuples of the date fields. For eg. a field named introduction_date and with a monthly frequency should have an entry ('intro_date','M'}"
         },
     )
-
     encode_date_columns: bool = field(
         default=True,
         metadata={"help": "Whether or not to encode the derived variables from date"},
@@ -150,10 +149,7 @@ class DataConfig:
     continuous_dim: int = field(init=False)
     # output_dim: int = field(init=False)
 
-    batch_size: int = field(
-        default=16,
-        metadata={"help: this is a test"}
-    )
+
 
     def __post_init__(self):
         assert (
