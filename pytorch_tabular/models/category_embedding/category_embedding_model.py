@@ -7,7 +7,7 @@ from typing import Dict
 
 import pytorch_lightning as pl
 import torch
-import torch.nn as nn
+from torch import nn
 from omegaconf import DictConfig
 
 from pytorch_tabular.utils import _initialize_layers, _linear_dropout_bn
