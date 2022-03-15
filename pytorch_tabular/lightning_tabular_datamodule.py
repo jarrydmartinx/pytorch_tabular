@@ -29,7 +29,7 @@ from .categorical_encoders import OrdinalEncoder
 logger = logging.getLogger(__name__)
 
 
-class TabularDatamodule(pl.LightningDataModule):
+class TabDatamodule(pl.LightningDataModule):
 
     CONTINUOUS_TRANSFORMS = {
         "quantile_uniform": {
@@ -52,13 +52,21 @@ class TabularDatamodule(pl.LightningDataModule):
 
     def __init__(
         self,
-        train: pd.DataFrame,
-        config: DictConfig,
+        target: List[str],
+        continuous_cols: List[str] = [],
+        categorical_cols: List = [],
+        date_columns: List[Tuple[Column names, Freq]] = [],
+        encode_date_columns: bool = False,
+        validation_split: Optional[float, NoneType] = 0.25,
+        continuous_feature_transform: Optional[str, NoneType] = None,
+        normalize_continuous_features: bool = False, 
+        num_workers: Optional[int, NoneType] = 0,
+        pin_memory: Optional[bool, NoneType] = False,
         validation: pd.DataFrame = None,
         test: pd.DataFrame = None,
         target_transform: Optional[Union[TransformerMixin, Tuple]] = None,
-        train_sampler: Optional[torch.utils.data.Sampler] = None,
-    ):
+        train_sampler: Optional[torch.utils.data.Sampler] = None):
+        
         """The Pytorch Lightning Datamodule for Tabular Data
 
         Args:
