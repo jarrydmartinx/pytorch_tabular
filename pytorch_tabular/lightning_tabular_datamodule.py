@@ -5,15 +5,14 @@
 import logging
 import re
 from typing import Iterable, List, Optional, Tuple, Union
-
-import category_encoders as ce
 import numpy as np
 import pandas as pd
-import pytorch_lightning as pl
-import torch
-from omegaconf import Dicthparams
+from pytorch_lightning import LightningDataModule
+from torch import Tensor
+from torch.utils.data import DataLoader, Dataset
 from pandas.tseries import offsets
 from pandas.tseries.frequencies import to_offset
+import category_encoders as ce
 from sklearn.base import TransformerMixin, copy
 from sklearn.preprocessing import (
     FunctionTransformer,
@@ -22,14 +21,12 @@ from sklearn.preprocessing import (
     QuantileTransformer,
     StandardScaler,
 )
-from torch.utils.data import DataLoader, Dataset
 
-from .categorical_encoders import OrdinalEncoder
+from categorical_encoders import OrdinalEncoder
 
 logger = logging.getLogger(__name__)
 
-
-class TabDatamodule(pl.LightningDataModule):
+class TabDatamodule(LightningDataModule):
 
     CONTINUOUS_TRANSFORMS = {
         "quantile_uniform": {
@@ -93,9 +90,9 @@ class TabDatamodule(pl.LightningDataModule):
             self.hparams.output_dim = len(self.hparams.target)
         elif self.hparams.task == "classification":
             self.hparams.output_dim = len(self.train[self.hparams.target[0]].unique())
-        elif self.hparams.task == "ssl":
-            self.output_dim = len(self.categorical_cols) + len(
-                self.hparams.continuous_cols)
+        # elif self.hparams.task == "ssl":
+        #     self.output_dim = len(self.categorical_cols) + len(
+        #         self.hparams.continuous_cols)
         elif self.hparams.task == "metric_learning":
             self.output_dim = len(self.hparams.categorical_cols) + len(
                 self.hparams.continuous_cols)
@@ -603,8 +600,8 @@ class TabularDataset(Dataset):
             "target": self.y[idx],
             "continuous": self.continuous_X[idx]
             if self.continuous_cols
-            else torch.Tensor(),
+            else Tensor(),
             "categorical": self.categorical_X[idx]
             if self.categorical_cols
-            else torch.Tensor(),
+            else Tensor(),
         }
