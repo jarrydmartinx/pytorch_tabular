@@ -217,7 +217,7 @@ class TabDatamodule(LightningDataModule):
                     )
         # Target Transforms
         if all([col in data.columns for col in self.hparams.target_cols]):
-            if self.do_target_transform:
+            if self.hparams.do_target_transform:
                 if stage == "fit":
                     target_transforms = []
                     for col in self.hparams.target_cols:
