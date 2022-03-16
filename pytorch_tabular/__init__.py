@@ -5,12 +5,12 @@ __email__ = "manujosephv@gmail.com"
 __version__ = "0.7.0"
 
 from . import models
-from .tabular_datamodule import TabularDatamodule
+from .tab_datamodule import TabDatamodule
 from .tabular_model import TabularModel
 
 __all__ = [
     "TabularModel",
-    "TabularDatamodule",
+    "TabDatamodule",
     "models",
 ]
 

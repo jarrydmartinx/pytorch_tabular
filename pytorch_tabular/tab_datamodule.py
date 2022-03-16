@@ -5,15 +5,14 @@
 import logging
 import re
 from typing import Iterable, List, Optional, Tuple, Union
-
-import category_encoders as ce
 import numpy as np
 import pandas as pd
-import pytorch_lightning as pl
-import torch
-from omegaconf import DictConfig
+from pytorch_lightning import LightningDataModule
+from torch import Tensor
+from torch.utils.data import DataLoader, Dataset
 from pandas.tseries import offsets
 from pandas.tseries.frequencies import to_offset
+import category_encoders as ce
 from sklearn.base import TransformerMixin, copy
 from sklearn.preprocessing import (
     FunctionTransformer,
@@ -22,14 +21,12 @@ from sklearn.preprocessing import (
     QuantileTransformer,
     StandardScaler,
 )
-from torch.utils.data import DataLoader, Dataset
 
-from .categorical_encoders import OrdinalEncoder
+from categorical_encoders import OrdinalEncoder
 
 logger = logging.getLogger(__name__)
 
-
-class TabularDatamodule(pl.LightningDataModule):
+class TabDatamodule(LightningDataModule):
 
     CONTINUOUS_TRANSFORMS = {
         "quantile_uniform": {
@@ -52,87 +49,66 @@ class TabularDatamodule(pl.LightningDataModule):
 
     def __init__(
         self,
-        train: pd.DataFrame,
-        config: DictConfig,
-        validation: pd.DataFrame = None,
-        test: pd.DataFrame = None,
+        train_df: pd.DataFrame,       
+        val_df: pd.DataFrame = None,
+        test_df: pd.DataFrame = None,
+        task: str = "metric_learning",
+        target_cols: List[str] = [],
+        continuous_cols: List[str] = [],
+        categorical_cols: List = [],
+        embedding_dims: Optional[List[int]] = None,
+        date_cols: List[Tuple[str, str]] = [],
+        encode_date_columns: bool = False,
+        validation_split: Optional[float] = 0.25,
+        batch_size: int = 16,
+        continuous_feature_transform: Optional[str] = None,
+        normalize_continuous_features: bool = False, 
+        num_workers: Optional[int] = 0,
+        pin_memory: Optional[bool] = False,
         target_transform: Optional[Union[TransformerMixin, Tuple]] = None,
-        train_sampler: Optional[torch.utils.data.Sampler] = None,
-    ):
+        train_sampler: Optional[torch.utils.data.Sampler] = None):
+        
         """The Pytorch Lightning Datamodule for Tabular Data
-
-        Args:
-            train (pd.DataFrame): The Training Dataframe
-            config (DictConfig): Merged configuration object from ModelConfig, DataConfig,
-            TrainerConfig, OptimizerConfig & ExperimentConfig
-            validation (pd.DataFrame, optional): Validation Dataframe.
-            If left empty, we use the validation split from DataConfig to split a random sample as validation.
-            Defaults to None.
-            test (pd.DataFrame, optional): Holdout DataFrame to check final performance on.
-            Defaults to None.
-            target_transform (Optional[Union[TransformerMixin, Tuple(Callable)]], optional): If provided, applies the transform to the target before modelling
-            and inverse the transform during prediction. The parameter can either be a sklearn Transformer which has an inverse_transform method, or
-            a tuple of callables (transform_func, inverse_transform_func)
         """
         super().__init__()
-        self.train = train.copy()
-        self.validation = validation
+        self.train = train_df.copy()
+        self.validation = val_df if val_df is None else val_df.copy()
+        self.test = test_df if test_df is None else test_df.copy()
+        self._fitted = False
+        self.save_hyperparameters()
         if target_transform is not None:
             if isinstance(target_transform, Iterable):
                 target_transform = FunctionTransformer(
                     func=target_transform[0], inverse_func=target_transform[1]
                 )
-            self.do_target_transform = True
+            self.hparams["do_target_transform"] = True
         else:
-            self.do_target_transform = False
-        self.target_transform_template = target_transform
-        self.test = test if test is None else test.copy()
-        self.target = config.target
-        self.batch_size = config.batch_size
-        self.train_sampler = train_sampler
-        self.config = config
-        self._fitted = False
+            self.hparams["do_target_transform"] = False
 
-    def update_config(self) -> None:
-        """Calculates and updates a few key information to the config object
+    def set_output_dim(self) -> None:
+        if self.hparams.task == "regression":
+            self.hparams.output_dim = len(self.hparams.target)
+        elif self.hparams.task == "classification":
+            self.hparams.output_dim = len(self.train[self.hparams.target[0]].unique())
+        # elif self.hparams.task == "ssl":
+        #     self.output_dim = len(self.categorical_cols) + len(
+        #         self.hparams.continuous_cols)
+        elif self.hparams.task == "metric_learning":
+            self.output_dim = len(self.hparams.categorical_cols) + len(
+                self.hparams.continuous_cols)
 
-        Raises:
-            NotImplementedError: [description]
-        """
-        if self.config.task == "regression":
-            self.config.output_dim = len(self.config.target)
-        elif self.config.task == "classification":
-            self.config.output_dim = len(self.train[self.config.target[0]].unique())
-        elif self.config.task == "ssl":
-            self.config.output_dim = len(self.config.categorical_cols) + len(
-                self.config.continuous_cols)
-        elif self.config.task == "metric_learning":
-            self.config.output_dim = len(self.config.categorical_cols) + len(
-                self.config.continuous_cols)
-
-        if not self.do_leave_one_out_encoder():
-            self.config.categorical_cardinality = [
-                int(self.train[col].fillna("NA").nunique()) + 1
-                for col in self.config.categorical_cols
+        self.categorical_cardinality = [
+            int(self.train[col].fillna("NA").nunique()) + 1
+            for col in self.hparams.categorical_cols
+        ]
+        if (
+            hasattr(self.hparams, "embedding_dims")
+            and self.embedding_dims is None
+        ):
+            self.embedding_dims = [
+                (x, min(50, (x + 1) // 2))
+                for x in self.hparams.categorical_cardinality
             ]
-            if (
-                hasattr(self.config, "embedding_dims")
-                and self.config.embedding_dims is None
-            ):
-                self.config.embedding_dims = [
-                    (x, min(50, (x + 1) // 2))
-                    for x in self.config.categorical_cardinality
-                ]
-
-    def do_leave_one_out_encoder(self) -> bool:
-        """Checks the special condition for NODE where we use a LeaveOneOutEncoder to encode categorical columns
-
-        Returns:
-            bool
-        """
-        return (self.config._model_name == "NODEModel") and (
-            not self.config.embed_categorical
-        )
 
     def preprocess_data(
         self, data: pd.DataFrame, stage: str = "inference"
@@ -148,8 +124,8 @@ class TabularDatamodule(pl.LightningDataModule):
         """
         logger.info(f"Preprocessing data: Stage: {stage}...")
         added_features = None
-        if self.config.encode_date_columns:
-            for field_name, freq in self.config.date_columns:
+        if self.hparams.date_cols:
+            for field_name, freq in self.hparams.date_cols:
                 data = self.make_date(data, field_name)
                 data, added_features = self.add_datepart(
                     data, field_name, frequency=freq, prefix=None, drop=True
@@ -160,93 +136,93 @@ class TabularDatamodule(pl.LightningDataModule):
             logger.debug(
                 f"Added {added_features} features after encoding the date_columns"
             )
-            self.config.categorical_cols += added_features
-            self.config.categorical_dim = (
-                len(self.config.categorical_cols)
-                if self.config.categorical_cols is not None
+            self.hparams.categorical_cols += added_features
+            self.hparams.categorical_dim = (
+                len(self.hparams.categorical_cols)
+                if self.hparams.categorical_cols is not None
                 else 0
             )
         # Encoding Categorical Columns
-        if len(self.config.categorical_cols) > 0:
+        if len(self.hparams.categorical_cols) > 0:
             if stage == "fit":
                 if self.do_leave_one_out_encoder():
                     logger.debug("Encoding Categorical Columns using LeavOneOutEncoder")
                     self.categorical_encoder = ce.LeaveOneOutEncoder(
-                        cols=self.config.categorical_cols, random_state=42
+                        cols=self.hparams.categorical_cols, random_state=42
                     )
                     # Multi-Target Regression uses the first target to encode the categorical columns
-                    if len(self.config.target) > 1:
+                    if len(self.hparams.target) > 1:
                         logger.warning(
-                            f"Multi-Target Regression: using the first target({self.config.target[0]}) to encode the categorical columns"
+                            f"Multi-Target Regression: using the first target({self.hparams.target[0]}) to encode the categorical columns"
                         )
                     data = self.categorical_encoder.fit_transform(
-                        data, data[self.config.target[0]]
+                        data, data[self.hparams.target[0]]
                     )
                 else:
                     logger.debug("Encoding Categorical Columns using OrdinalEncoder")
                     self.categorical_encoder = OrdinalEncoder(
-                        cols=self.config.categorical_cols
+                        cols=self.hparams.categorical_cols
                     )
                     data = self.categorical_encoder.fit_transform(data)
             else:
                 data = self.categorical_encoder.transform(data)
 
         # Transforming Continuous Columns
-        if (self.config.continuous_feature_transform is not None) and (
-            len(self.config.continuous_cols) > 0
+        if (self.hparams.continuous_feature_transform is not None) and (
+            len(self.hparams.continuous_cols) > 0
         ):
             if stage == "fit":
                 transform = self.CONTINUOUS_TRANSFORMS[
-                    self.config.continuous_feature_transform
+                    self.hparams.continuous_feature_transform
                 ]
                 self.continuous_transform = transform["callable"](**transform["params"])
                 # TODO implement quantile noise
                 data.loc[
-                    :, self.config.continuous_cols
+                    :, self.hparams.continuous_cols
                 ] = self.continuous_transform.fit_transform(
-                    data.loc[:, self.config.continuous_cols]
+                    data.loc[:, self.hparams.continuous_cols]
                 )
             else:
                 data.loc[
-                    :, self.config.continuous_cols
+                    :, self.hparams.continuous_cols
                 ] = self.continuous_transform.transform(
-                    data.loc[:, self.config.continuous_cols]
+                    data.loc[:, self.hparams.continuous_cols]
                 )
 
         # Normalizing Continuous Columns
-        if (self.config.normalize_continuous_features) and (
-            len(self.config.continuous_cols) > 0
+        if (self.hparams.normalize_continuous_features) and (
+            len(self.hparams.continuous_cols) > 0
         ):
             if stage == "fit":
                 self.scaler = StandardScaler()
-                data.loc[:, self.config.continuous_cols] = self.scaler.fit_transform(
-                    data.loc[:, self.config.continuous_cols]
+                data.loc[:, self.hparams.continuous_cols] = self.scaler.fit_transform(
+                    data.loc[:, self.hparams.continuous_cols]
                 )
             else:
-                data.loc[:, self.config.continuous_cols] = self.scaler.transform(
-                    data.loc[:, self.config.continuous_cols]
+                data.loc[:, self.hparams.continuous_cols] = self.scaler.transform(
+                    data.loc[:, self.hparams.continuous_cols]
                 )
 
         # Converting target labels to a 0 indexed label
-        if self.config.task == "classification":
+        if self.hparams.task == "classification":
             if stage == "fit":
                 self.label_encoder = LabelEncoder()
-                data[self.config.target[0]] = self.label_encoder.fit_transform(
-                    data[self.config.target[0]]
+                data[self.hparams.target[0]] = self.label_encoder.fit_transform(
+                    data[self.hparams.target[0]]
                 )
             else:
-                if self.config.target[0] in data.columns:
-                    data[self.config.target[0]] = self.label_encoder.transform(
-                        data[self.config.target[0]]
+                if self.hparams.target[0] in data.columns:
+                    data[self.hparams.target[0]] = self.label_encoder.transform(
+                        data[self.hparams.target[0]]
                     )
         # Target Transforms
-        if all([col in data.columns for col in self.config.target]):
+        if all([col in data.columns for col in self.hparams.target]):
             if self.do_target_transform:
                 if stage == "fit":
                     target_transforms = []
-                    for col in self.config.target:
+                    for col in self.hparams.target:
                         _target_transform = copy.deepcopy(
-                            self.target_transform_template
+                            self.target_transform
                         )
                         data[col] = _target_transform.fit_transform(
                             data[col].values.reshape(-1, 1)
@@ -255,7 +231,7 @@ class TabularDatamodule(pl.LightningDataModule):
                     self.target_transforms = target_transforms
                 else:
                     for col, _target_transform in zip(
-                        self.config.target, self.target_transforms
+                        self.hparams.target, self.target_transforms
                     ):
                         data[col] = _target_transform.transform(
                             data[col].values.reshape(-1, 1)
@@ -272,10 +248,10 @@ class TabularDatamodule(pl.LightningDataModule):
         if stage == "fit" or stage is None:
             if self.validation is None:
                 logger.debug(
-                    f"No validation data provided. Using {self.config.validation_split*100}% of train data as validation"
+                    f"No validation data provided. Using {self.hparams.validation_split*100}% of train data as validation"
                 )
                 val_idx = self.train.sample(
-                    int(self.config.validation_split * len(self.train)), random_state=42
+                    int(self.hparams.validation_split * len(self.train)), random_state=42
                 ).index
                 self.validation = self.train[self.train.index.isin(val_idx)]
                 self.train = self.train[~self.train.index.isin(val_idx)]
@@ -288,8 +264,8 @@ class TabularDatamodule(pl.LightningDataModule):
             )
             if self.test is not None:
                 self.test, _ = self.preprocess_data(self.test, stage="inference")
-            # Calculating the categorical dims and embedding dims etc and updating the config
-            self.update_config()
+            # Calculating the categorical dims and embedding dims etc and updating the hparams
+            self.update_hparams()
             self._fitted = True
 
     # adapted from gluonts
@@ -453,7 +429,7 @@ class TabularDatamodule(pl.LightningDataModule):
             )
             df.insert(3, prefix + "Week", week)
             added_features.append(prefix + "Week")
-        # TODO Not adding Elapsed by default. Need to route it through config
+        # TODO Not adding Elapsed by default. Need to route it through hparams
         # mask = ~field.isna()
         # df[prefix + "Elapsed"] = np.where(
         #     mask, field.values.astype(np.int64) // 10 ** 9, None
@@ -472,10 +448,10 @@ class TabularDatamodule(pl.LightningDataModule):
     def train_dataloader(self, batch_size: Optional[int] = None) -> DataLoader:
         """Function that loads the train set."""
         dataset = TabularDataset(
-            task=self.config.task,
+            task=self.hparams.task,
             data=self.train,
-            categorical_cols=self.config.categorical_cols,
-            continuous_cols=self.config.continuous_cols,
+            categorical_cols=self.hparams.categorical_cols,
+            continuous_cols=self.hparams.continuous_cols,
             embed_categorical=(not self.do_leave_one_out_encoder()),
             target=self.target,
         )
@@ -483,18 +459,18 @@ class TabularDatamodule(pl.LightningDataModule):
             dataset,
             batch_size if batch_size is not None else self.batch_size,
             shuffle=True if self.train_sampler is None else False,
-            num_workers=self.config.num_workers,
+            num_workers=self.hparams.num_workers,
             sampler=self.train_sampler,
-            pin_memory=self.config.pin_memory,
+            pin_memory=self.hparams.pin_memory,
         )
 
     def val_dataloader(self) -> DataLoader:
         """Function that loads the validation set."""
         dataset = TabularDataset(
-            task=self.config.task,
+            task=self.hparams.task,
             data=self.validation,
-            categorical_cols=self.config.categorical_cols,
-            continuous_cols=self.config.continuous_cols,
+            categorical_cols=self.hparams.categorical_cols,
+            continuous_cols=self.hparams.continuous_cols,
             embed_categorical=(not self.do_leave_one_out_encoder()),
             target=self.target,
         )
@@ -502,18 +478,18 @@ class TabularDatamodule(pl.LightningDataModule):
             dataset,
             self.batch_size,
             shuffle=False,
-            num_workers=self.config.num_workers,
-            pin_memory=self.config.pin_memory,
+            num_workers=self.hparams.num_workers,
+            pin_memory=self.hparams.pin_memory,
         )
 
     def test_dataloader(self) -> DataLoader:
         """Function that loads the validation set."""
         if self.test is not None:
             dataset = TabularDataset(
-                task=self.config.task,
+                task=self.hparams.task,
                 data=self.test,
-                categorical_cols=self.config.categorical_cols,
-                continuous_cols=self.config.continuous_cols,
+                categorical_cols=self.hparams.categorical_cols,
+                continuous_cols=self.hparams.continuous_cols,
                 embed_categorical=(not self.do_leave_one_out_encoder()),
                 target=self.target,
             )
@@ -521,8 +497,8 @@ class TabularDatamodule(pl.LightningDataModule):
                 dataset,
                 self.batch_size,
                 shuffle=False,
-                num_workers=self.config.num_workers,
-                pin_memory=self.config.pin_memory,
+                num_workers=self.hparams.num_workers,
+                pin_memory=self.hparams.pin_memory,
             )
 
     def prepare_inference_dataloader(self, df: pd.DataFrame) -> DataLoader:
@@ -536,7 +512,7 @@ class TabularDatamodule(pl.LightningDataModule):
         """
         df = df.copy()
         if len(set(self.target) - set(df.columns)) > 0:
-            if self.config.task == "classification":
+            if self.hparams.task == "classification":
                 df.loc[:, self.target] = np.array(
                     [self.label_encoder.classes_[0]] * len(df)
                 )
@@ -545,10 +521,10 @@ class TabularDatamodule(pl.LightningDataModule):
         df, _ = self.preprocess_data(df, stage="inference")
 
         dataset = TabularDataset(
-            task=self.config.task,
+            task=self.hparams.task,
             data=df,
-            categorical_cols=self.config.categorical_cols,
-            continuous_cols=self.config.continuous_cols,
+            categorical_cols=self.hparams.categorical_cols,
+            continuous_cols=self.hparams.continuous_cols,
             embed_categorical=(not self.do_leave_one_out_encoder()),
             target=self.target
             if all([col in df.columns for col in self.target])
@@ -558,7 +534,7 @@ class TabularDatamodule(pl.LightningDataModule):
             dataset,
             self.batch_size,
             shuffle=False,
-            num_workers=self.config.num_workers,
+            num_workers=self.hparams.num_workers,
         )
 
 
@@ -595,7 +571,7 @@ class TabularDataset(Dataset):
         else:
             self.y = np.zeros((self.n, 1))  # .astype(np.int64)
 
-        if task == "classification":
+        if task == "classification" or "metric_learning":
             self.y = self.y.astype(np.int64)
         self.categorical_cols = categorical_cols if categorical_cols else []
         self.continuous_cols = continuous_cols if continuous_cols else []
@@ -624,8 +600,8 @@ class TabularDataset(Dataset):
             "target": self.y[idx],
             "continuous": self.continuous_X[idx]
             if self.continuous_cols
-            else torch.Tensor(),
+            else Tensor(),
             "categorical": self.categorical_X[idx]
             if self.categorical_cols
-            else torch.Tensor(),
+            else Tensor(),
         }
