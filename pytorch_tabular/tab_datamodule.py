@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from pytorch_lightning import LightningDataModule
 from torch import Tensor
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, Sampler
 from pandas.tseries import offsets
 from pandas.tseries.frequencies import to_offset
 import category_encoders as ce
@@ -22,7 +22,7 @@ from sklearn.preprocessing import (
     StandardScaler,
 )
 
-from categorical_encoders import OrdinalEncoder
+from .categorical_encoders import OrdinalEncoder
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ class TabDatamodule(LightningDataModule):
         num_workers: Optional[int] = 0,
         pin_memory: Optional[bool] = False,
         target_transform: Optional[Union[TransformerMixin, Tuple]] = None,
-        train_sampler: Optional[torch.utils.data.Sampler] = None):
+        train_sampler: Optional[Sampler] = None):
         
         """The Pytorch Lightning Datamodule for Tabular Data
         """

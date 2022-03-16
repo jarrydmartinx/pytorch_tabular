@@ -1,15 +1,15 @@
 """Top-level package for Pytorch Tabular."""
 
 __author__ = """Manu Joseph"""
-__email__ = "manujosephv@gmail.com"
+__email__ = "mail@jarrydmartin.com"
 __version__ = "0.7.0"
 
 from . import models
 from .tab_datamodule import TabDatamodule
-from .tabular_model import TabularModel
+# from .tabular_model import TabularModel
 
 __all__ = [
-    "TabularModel",
+    # "TabularModel",
     "TabDatamodule",
     "models",
 ]
