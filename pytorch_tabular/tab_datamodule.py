@@ -265,7 +265,6 @@ class TabDatamodule(LightningDataModule):
             if self.test is not None:
                 self.test, _ = self.preprocess_data(self.test, stage="inference")
             # Calculating the categorical dims and embedding dims etc and updating the hparams
-            self.update_hparams()
             self._fitted = True
 
     # adapted from gluonts
