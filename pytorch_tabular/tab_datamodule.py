@@ -52,7 +52,7 @@ class TabDatamodule(LightningDataModule):
         train_df: pd.DataFrame,       
         val_df: pd.DataFrame = None,
         test_df: pd.DataFrame = None,
-        task: str = "metric_learning",
+        task: str = "classification",
         target_cols: List[str] = [],
         continuous_cols: List[str] = [],
         categorical_cols: List = [],
@@ -535,6 +535,15 @@ class TabDatamodule(LightningDataModule):
             self.batch_size,
             shuffle=False,
             num_workers=self.hparams.num_workers,
+        )
+
+    def do_leave_one_out_encoder(self) -> bool:
+        """Checks the special condition for NODE where we use a LeaveOneOutEncoder to encode categorical columns
+        Returns:
+            bool
+        """
+        return (self.config._model_name == "NODEModel") and (
+            not self.config.embed_categorical
         )
 
 
