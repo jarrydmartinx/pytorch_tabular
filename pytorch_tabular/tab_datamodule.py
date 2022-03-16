@@ -87,12 +87,12 @@ class TabDatamodule(LightningDataModule):
 
     def set_output_dim(self) -> None:
         if self.hparams.task == "regression":
-            self.hparams.output_dim = len(self.hparams.target)
+            self.hparams.output_dim = len(self.hparams.target_cols)
         elif self.hparams.task == "classification":
-            self.hparams.output_dim = len(self.train[self.hparams.target[0]].unique())
-        # elif self.hparams.task == "ssl":
-        #     self.output_dim = len(self.categorical_cols) + len(
-        #         self.hparams.continuous_cols)
+            self.hparams.output_dim = len(self.train[self.hparams.target_cols[0]].unique())
+        elif self.hparams.task == "ssl":
+            self.output_dim = len(self.categorical_cols) + len(
+                self.hparams.continuous_cols)
         elif self.hparams.task == "metric_learning":
             self.output_dim = len(self.hparams.categorical_cols) + len(
                 self.hparams.continuous_cols)
@@ -151,12 +151,12 @@ class TabDatamodule(LightningDataModule):
                         cols=self.hparams.categorical_cols, random_state=42
                     )
                     # Multi-Target Regression uses the first target to encode the categorical columns
-                    if len(self.hparams.target) > 1:
+                    if len(self.hparams.target_cols) > 1:
                         logger.warning(
-                            f"Multi-Target Regression: using the first target({self.hparams.target[0]}) to encode the categorical columns"
+                            f"Multi-Target Regression: using the first target({self.hparams.target_cols[0]}) to encode the categorical columns"
                         )
                     data = self.categorical_encoder.fit_transform(
-                        data, data[self.hparams.target[0]]
+                        data, data[self.hparams.target_cols[0]]
                     )
                 else:
                     logger.debug("Encoding Categorical Columns using OrdinalEncoder")
@@ -207,20 +207,20 @@ class TabDatamodule(LightningDataModule):
         if self.hparams.task == "classification":
             if stage == "fit":
                 self.label_encoder = LabelEncoder()
-                data[self.hparams.target[0]] = self.label_encoder.fit_transform(
-                    data[self.hparams.target[0]]
+                data[self.hparams.target_cols[0]] = self.label_encoder.fit_transform(
+                    data[self.hparams.target_cols[0]]
                 )
             else:
-                if self.hparams.target[0] in data.columns:
-                    data[self.hparams.target[0]] = self.label_encoder.transform(
-                        data[self.hparams.target[0]]
+                if self.hparams.target_cols[0] in data.columns:
+                    data[self.hparams.target_cols[0]] = self.label_encoder.transform(
+                        data[self.hparams.target_cols[0]]
                     )
         # Target Transforms
-        if all([col in data.columns for col in self.hparams.target]):
+        if all([col in data.columns for col in self.hparams.target_cols]):
             if self.do_target_transform:
                 if stage == "fit":
                     target_transforms = []
-                    for col in self.hparams.target:
+                    for col in self.hparams.target_cols:
                         _target_transform = copy.deepcopy(
                             self.target_transform
                         )
@@ -231,7 +231,7 @@ class TabDatamodule(LightningDataModule):
                     self.target_transforms = target_transforms
                 else:
                     for col, _target_transform in zip(
-                        self.hparams.target, self.target_transforms
+                        self.hparams.target_cols, self.target_transforms
                     ):
                         data[col] = _target_transform.transform(
                             data[col].values.reshape(-1, 1)
