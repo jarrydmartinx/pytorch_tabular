@@ -11,7 +11,7 @@ from .tab_datamodule import TabDatamodule
 __all__ = [
     # "TabularModel",
     "TabDatamodule",
-    "models",
+    # "models",
 ]
 
 # fix Sphinx issues, see https://bit.ly/2K2eptM
