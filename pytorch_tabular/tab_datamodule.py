@@ -542,9 +542,7 @@ class TabDatamodule(LightningDataModule):
         Returns:
             bool
         """
-        return (self.config._model_name == "NODEModel") and (
-            not self.config.embed_categorical
-        )
+        return False #(self.hparams._model_name == "NODEModel") and (not self.config.embed_categorical)
 
 
 class TabularDataset(Dataset):
